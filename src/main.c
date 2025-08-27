@@ -1,103 +1,71 @@
-/*
- * Copyright (c) 2016 Open-RnD Sp. z o.o.
- * Copyright (c) 2020 Nordic Semiconductor ASA
- *
- * SPDX-License-Identifier: Apache-2.0
- *
- * NOTE: If you are looking into an implementation of button events with
- * debouncing, check out `input` subsystem and `samples/subsys/input/input_dump`
- * example instead.
- */
-
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/sys/util.h>
-#include <zephyr/sys/printk.h>
-#include <inttypes.h>
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
-#define SLEEP_TIME_MS	1
+/* Use board aliases so it “just works” on the nRF5340 DK */
+#define LED0_NODE  DT_ALIAS(led0)
+#define SW0_NODE   DT_ALIAS(sw0)
 
-/*
- * Get button configuration from the devicetree sw0 alias. This is mandatory.
- */
-#define SW0_NODE	DT_ALIAS(sw0)
-#if !DT_NODE_HAS_STATUS_OKAY(SW0_NODE)
-#error "Unsupported board: sw0 devicetree alias is not defined"
-#endif
-static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET_OR(SW0_NODE, gpios,
-							      {0});
-static struct gpio_callback button_cb_data;
+static const struct gpio_dt_spec led0 = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+static const struct gpio_dt_spec sw0  = GPIO_DT_SPEC_GET(SW0_NODE,  gpios);
 
-/*
- * The led0 devicetree alias is optional. If present, we'll use it
- * to turn on the LED whenever the button is pressed.
- */
-static struct gpio_dt_spec led = GPIO_DT_SPEC_GET_OR(DT_ALIAS(led0), gpios,
-						     {0});
+static struct gpio_callback sw0_cb;
+static struct k_work_delayable heartbeat_work;
 
-void button_pressed(const struct device *dev, struct gpio_callback *cb,
-		    uint32_t pins)
+static void heartbeat_fn(struct k_work *work)
 {
-	printk("Button pressed at %" PRIu32 "\n", k_cycle_get_32());
+    ARG_UNUSED(work);
+    gpio_pin_toggle_dt(&led0);
+    /* Reschedule for a 500 ms heartbeat */
+    k_work_schedule(&heartbeat_work, K_MSEC(500));
+}
+
+/* Toggle LED on button press and log it */
+static void sw0_isr(const struct device *dev, struct gpio_callback *cb, uint32_t pins)
+{
+    ARG_UNUSED(dev); ARG_UNUSED(cb); ARG_UNUSED(pins);
+    gpio_pin_toggle_dt(&led0);
+    LOG_INF("Button event → LED toggled");
 }
 
 int main(void)
 {
-	int ret;
+    int err;
 
-	if (!gpio_is_ready_dt(&button)) {
-		printk("Error: button device %s is not ready\n",
-		       button.port->name);
-		return 0;
-	}
+    if (!device_is_ready(led0.port) || !device_is_ready(sw0.port)) {
+        LOG_ERR("GPIO device(s) not ready");
+        return 0;
+    }
 
-	ret = gpio_pin_configure_dt(&button, GPIO_INPUT);
-	if (ret != 0) {
-		printk("Error %d: failed to configure %s pin %d\n",
-		       ret, button.port->name, button.pin);
-		return 0;
-	}
+    /* LED output (handles active-low via DT flags) */
+    err = gpio_pin_configure_dt(&led0, GPIO_OUTPUT_INACTIVE);
+    if (err) {
+        LOG_ERR("LED config failed (%d)", err);
+        return 0;
+    }
 
-	ret = gpio_pin_interrupt_configure_dt(&button,
-					      GPIO_INT_EDGE_TO_ACTIVE);
-	if (ret != 0) {
-		printk("Error %d: failed to configure interrupt on %s pin %d\n",
-			ret, button.port->name, button.pin);
-		return 0;
-	}
+    /* Button input + interrupt on transition to ACTIVE
+       (ACTIVE accounts for active-low hardware on the DK) */
+    err = gpio_pin_configure_dt(&sw0, GPIO_INPUT);
+    if (!err) err = gpio_pin_interrupt_configure_dt(&sw0, GPIO_INT_EDGE_TO_ACTIVE);
+    if (err) {
+        LOG_ERR("Button config/irq failed (%d)", err);
+        return 0;
+    }
 
-	gpio_init_callback(&button_cb_data, button_pressed, BIT(button.pin));
-	gpio_add_callback(button.port, &button_cb_data);
-	printk("Set up button at %s pin %d\n", button.port->name, button.pin);
+    gpio_init_callback(&sw0_cb, sw0_isr, BIT(sw0.pin));
+    gpio_add_callback(sw0.port, &sw0_cb);
+    LOG_INF("Button ready (alias sw0); heartbeat starting");
 
-	if (led.port && !gpio_is_ready_dt(&led)) {
-		printk("Error %d: LED device %s is not ready; ignoring it\n",
-		       ret, led.port->name);
-		led.port = NULL;
-	}
-	if (led.port) {
-		ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT);
-		if (ret != 0) {
-			printk("Error %d: failed to configure LED device %s pin %d\n",
-			       ret, led.port->name, led.pin);
-			led.port = NULL;
-		} else {
-			printk("Set up LED at %s pin %d\n", led.port->name, led.pin);
-		}
-	}
+    /* Start the non-blocking heartbeat */
+    k_work_init_delayable(&heartbeat_work, heartbeat_fn);
+    k_work_schedule(&heartbeat_work, K_MSEC(500));
 
-	printk("Press the button\n");
-	if (led.port) {
-		while (1) {
-			/* If we have an LED, match its state to the button's. */
-			int val = gpio_pin_get_dt(&button);
-
-			if (val >= 0) {
-				gpio_pin_set_dt(&led, val);
-			}
-			k_msleep(SLEEP_TIME_MS);
-		}
-	}
-	return 0;
+    /* Idle forever; work/ISRs do the job */
+    while (1) {
+        k_sleep(K_FOREVER);
+    }
 }
