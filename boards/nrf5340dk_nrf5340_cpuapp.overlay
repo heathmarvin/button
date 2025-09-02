@@ -1,0 +1,7 @@
+/ {
+  gpio_keys: gpio_keys {
+    compatible = "gpio-keys";
+    pir0: pir0 { gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>; label = "PIR0"; };
+    pir1: pir1 { gpios = <&gpio0 10 GPIO_ACTIVE_HIGH>; label = "PIR1"; };
+  };
+};
