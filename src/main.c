@@ -18,7 +18,7 @@ static struct k_work_delayable heartbeat_work;
 static void heartbeat_fn(struct k_work *work)
 {
     ARG_UNUSED(work);
-    gpio_pin_toggle_dt(&led0);
+    //gpio_pin_toggle_dt(&led0);
     /* Reschedule for a 500 ms heartbeat */
     k_work_schedule(&heartbeat_work, K_MSEC(500));
 }
