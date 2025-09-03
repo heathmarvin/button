@@ -1,7 +1,29 @@
 / {
   gpio_keys: gpio_keys {
     compatible = "gpio-keys";
-    pir0: pir0 { gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>; label = "PIR0"; };
-    pir1: pir1 { gpios = <&gpio0 10 GPIO_ACTIVE_HIGH>; label = "PIR1"; };
+    pir0: pir0 { gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>; label = "PIR0"; };
+    pir1: pir1 { gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>; label = "PIR1"; };
+    pir2: pir2 { gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>; label = "PIR2"; };
+    pir3: pir3 { gpios = <&gpio1 8 GPIO_ACTIVE_HIGH>; label = "PIR3"; };
+    pir4: pir4 { gpios = <&gpio1 9 GPIO_ACTIVE_HIGH>; label = "PIR4"; };
   };
+};
+
+/ {
+    leds {
+        compatible = "gpio-leds";
+        led0: led_0 { gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>; label = "LED0"; };
+        led1: led_1 { gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>; label = "LED1"; };
+        led2: led_2 { gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>; label = "LED2"; };
+        led3: led_3 { gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>; label = "LED3"; };
+        led4: led_4 { gpios = <&gpio1 15 GPIO_ACTIVE_HIGH>; label = "LED4"; };
+    };
+
+    aliases {
+        led0 = &led0;
+        led1 = &led1;
+        led2 = &led2;
+        led3 = &led3;
+        led4 = &led4;
+    };
 };
